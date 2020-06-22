@@ -3,6 +3,9 @@
 # Licensed under a 3-clause BSD style license (see LICENSE)
 from typing import Any, Dict
 
+from collections import Counter
+from datetime import datetime
+
 from github import Github
 from github.GithubException import BadCredentialsException, RateLimitExceededException, UnknownObjectException
 
@@ -21,6 +24,9 @@ class GithubRepoCheck(AgentCheck):
         if not self.access_token:
             raise ConfigurationError('Configuration error, please set an access_token')
 
+        self.cache = Counter()
+        self.since = None
+
     def check(self, _):
         # type: (Dict[str, Any]) -> None
 
@@ -28,7 +34,9 @@ class GithubRepoCheck(AgentCheck):
         if not repository_name:
             raise ConfigurationError('Configuration error, please set a repository_name')
 
-        tags = []
+        # NOTE: custom_tags is a stretch
+        tags = self.instance.get('custom_tags', [])
+
         g = Github(self.access_token)
 
         try:
@@ -58,6 +66,22 @@ class GithubRepoCheck(AgentCheck):
             self.gauge('github_repo.contributors', contributors, tags=tags)
             subscribers = repo.get_subscribers().totalCount
             self.gauge('github_repo.subscribers', subscribers, tags=tags)
+
+            if self.since is None:
+                # We need to warm the cache
+                commits = repo.get_commits()
+            else:
+                commits = repo.get_commits(since=self.since)
+
+            self.since = datetime.now()
+
+            for commit in commits:
+                author = commit.author.login
+                self.cache[author] += 1
+
+            # Submit metrics with author tag
+            for author, commit_count in self.cache.items():
+                self.gauge('github_repo.commits', commit_count, tags=tags + ["contributor:{}".format(author)])
 
         except RateLimitExceededException as e:
             self.handle_exception(
