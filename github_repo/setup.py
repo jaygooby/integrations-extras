@@ -38,7 +38,7 @@ setup(
     long_description_content_type='text/markdown',
     keywords='datadog agent github_repo check',
     # The project's main homepage.
-    url='https://github.com/DataDog/integrations-core',
+    url='https://github.com/DataDog/integrations-extras',
     # Author details
     author='Datadog',
     author_email='packages@datadoghq.com',
